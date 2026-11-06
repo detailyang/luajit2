@@ -1,6 +1,6 @@
 /*
 ** Table library.
-** Copyright (C) 2005-2016 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2026 Mike Pall. See Copyright Notice in luajit.h
 **
 ** Major portions taken verbatim or adapted from the Lua interpreter.
 ** Copyright (C) 1994-2008 Lua.org, PUC-Rio. See Copyright Notice in lua.h
@@ -129,6 +129,26 @@ LJLIB_LUA(table_remove) /*
   end
 */
 
+LJLIB_LUA(table_move) /*
+  function(a1, f, e, t, a2)
+    CHECK_tab(a1)
+    CHECK_int(f)
+    CHECK_int(e)
+    CHECK_int(t)
+    if a2 == nil then a2 = a1 end
+    CHECK_tab(a2)
+    if e >= f then
+      local d = t - f
+      if t > e or t <= f or a2 ~= a1 then
+	for i=f,e do a2[i+d] = a1[i] end
+      else
+	for i=e,f,-1 do a2[i+d] = a1[i] end
+      end
+    end
+    return a2
+  end
+*/
+
 LJLIB_CF(table_concat)		LJLIB_REC(.)
 {
   GCtab *t = lj_lib_checktab(L, 1);
@@ -139,13 +159,54 @@ LJLIB_CF(table_concat)		LJLIB_REC(.)
   SBuf *sb = lj_buf_tmp_(L);
   SBuf *sbx = lj_buf_puttab(sb, t, sep, i, e);
   if (LJ_UNLIKELY(!sbx)) {  /* Error: bad element type. */
-    int32_t idx = (int32_t)(intptr_t)sbufP(sb);
+    int32_t idx = (int32_t)(intptr_t)sb->w;
     cTValue *o = lj_tab_getint(t, idx);
     lj_err_callerv(L, LJ_ERR_TABCAT,
 		   lj_obj_itypename[o ? itypemap(o) : ~LJ_TNIL], idx);
   }
   setstrV(L, L->top-1, lj_buf_str(L, sbx));
   lj_gc_check(L);
+  return 1;
+}
+
+LJLIB_NOREG LJLIB_CF(table_clone) LJLIB_REC(.)
+{
+  GCtab *src = lj_lib_checktab(L, 1);
+  GCtab *dup = lj_tab_dup_helper(L, src, 1);
+
+  settabV(L, L->base, dup);
+  L->top = L->base+1;
+
+  return 1;
+}
+
+LJLIB_NOREG LJLIB_CF(table_isarray) LJLIB_REC(.)
+{
+  GCtab *src = lj_lib_checktab(L, 1);
+
+  setboolV(L->base, lj_tab_isarray(src));
+  L->top = L->base+1;
+
+  return 1;
+}
+
+LJLIB_NOREG LJLIB_CF(table_nkeys) LJLIB_REC(.)
+{
+  GCtab *src = lj_lib_checktab(L, 1);
+
+  setintV(L->base, lj_tab_nkeys(src));
+  L->top = L->base+1;
+
+  return 1;
+}
+
+LJLIB_NOREG LJLIB_CF(table_isempty) LJLIB_REC(.)
+{
+  GCtab *src = lj_lib_checktab(L, 1);
+
+  setboolV(L->base, lj_tab_isempty(src));
+  L->top = L->base+1;
+
   return 1;
 }
 
@@ -284,6 +345,26 @@ static int luaopen_table_new(lua_State *L)
   return lj_lib_postreg(L, lj_cf_table_new, FF_table_new, "new");
 }
 
+static int luaopen_table_clone(lua_State *L)
+{
+  return lj_lib_postreg(L, lj_cf_table_clone, FF_table_clone, "clone");
+}
+
+static int luaopen_table_nkeys(lua_State *L)
+{
+  return lj_lib_postreg(L, lj_cf_table_nkeys, FF_table_nkeys, "nkeys");
+}
+
+static int luaopen_table_isarray(lua_State *L)
+{
+  return lj_lib_postreg(L, lj_cf_table_isarray, FF_table_isarray, "isarray");
+}
+
+static int luaopen_table_isempty(lua_State *L)
+{
+  return lj_lib_postreg(L, lj_cf_table_isempty, FF_table_isempty, "isempty");
+}
+
 static int luaopen_table_clear(lua_State *L)
 {
   return lj_lib_postreg(L, lj_cf_table_clear, FF_table_clear, "clear");
@@ -301,6 +382,10 @@ LUALIB_API int luaopen_table(lua_State *L)
   lua_setfield(L, -2, "unpack");
 #endif
   lj_lib_prereg(L, LUA_TABLIBNAME ".new", luaopen_table_new, tabV(L->top-1));
+  lj_lib_prereg(L, LUA_TABLIBNAME ".clone", luaopen_table_clone, tabV(L->top-1));
+  lj_lib_prereg(L, LUA_TABLIBNAME ".isarray", luaopen_table_isarray, tabV(L->top-1));
+  lj_lib_prereg(L, LUA_TABLIBNAME ".nkeys", luaopen_table_nkeys, tabV(L->top-1));
+  lj_lib_prereg(L, LUA_TABLIBNAME ".isempty", luaopen_table_isempty, tabV(L->top-1));
   lj_lib_prereg(L, LUA_TABLIBNAME ".clear", luaopen_table_clear, tabV(L->top-1));
   return 1;
 }
